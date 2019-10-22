@@ -1,0 +1,13 @@
+[Unit]
+Description=Gunicorn instance to serve logins service of MYSpace
+After=network.target
+
+[Service]
+User=ubuntu
+Group=nginx
+WorkingDirectory=/home/ubuntu/MYSpace-Logins
+Environment="/home/ubuntu/.local/bin"
+ExecStart=/home/ubuntu/.local/bin/gunicorn --workers 3 --bind 0.0.0.0:5000 wsgi:app
+
+[Install]
+WantedBy=multi-user.target
