@@ -15,7 +15,7 @@ password = "Ferdmansleftcheek123"
 context = ssl.create_default_context()
 
 app = Flask(__name__)
-app.config["MONGO_URI"] = "mongodb://localhost:27017/USERS"
+app.config["MONGO_URI"] = "mongodb://localhost:27017/users"
 
 app.config["SECURITY_PASSWORD_SALT"] = "fatbirdo"
 app.config["SECRET_KEY"] = "fatyoshi"
@@ -134,7 +134,8 @@ def login():
 		return { "status" : "ERROR", "message" : "User has not been validated" }, 200 #400
 	
 	if bcrypt.checkpw(creds['password'].encode('utf8'), user['password_hash']):
-		session['username'] = creds['username']
+		# session['username'] = creds['username']
+		print("LOGIN GOOD")
 	else:
 		return { "status" : "ERROR", "message" : "Incorrect password" }, 200 #400
 	
