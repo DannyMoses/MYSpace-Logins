@@ -51,18 +51,18 @@ def add_user():
 
 	if data is None:
 		print("ERROR: DATA IS NONE")
-		return { "status" : "ERROR" }, 200 #400
+		return { "status" : "ERROR" , "error": "No data specified" }, 200 #400
 	
 	if "username" not in data or "password" not in data or "email" not in data:
 		print("ERROR: IMPROPER DATA")
-		return { "status" : "ERROR" }, 200 #400
+		return { "status" : "ERROR", "error": "Not all data fields were found" }, 200 #400
 	
 	uname = data["username"]
 	usr_collection = mongo.db.USERS
 
 	if usr_collection is not None and usr_collection.find_one({"username" : uname }) is not None:
-		print("ERROR: DATABASE CHECK FAILED")
-		return { "status" : "ERROR" }, 200 #400
+		print("ERROR: DATABASE CHECK USERNAME FAILED")
+		return { "status" : "ERROR", "error": "Username taken" }, 200 #400
 	
 	email = data["email"]
 	res = EMAIL_REGEX.match(email)
@@ -70,6 +70,10 @@ def add_user():
 	if res == None:
 		print("ERROR: BAD EMAIL REGEX MATCH")
 		return { "status" : "ERROR" }, 200 #400
+	if usr_collection is not None and usr_collection.find_one({"email" : email }) is not None:
+		print("ERROR: DATABASE CHECK EMAIL FAILED")
+		return { "status" : "ERROR", "error": "Email already in use" }, 200 #400
+	
 
 	hashed = bcrypt.hashpw(data["password"].encode('utf8'), bcrypt.gensalt())
 
@@ -78,7 +82,6 @@ def add_user():
 		"password" : data["password"],
 		"password_hash" : hashed,
 		"validated" : False
-
 		}
 
 	usr_collection.insert_one(usr)
@@ -101,7 +104,7 @@ def verify_user():
 	data = request.json
 
 	if "email" not in data or "key" not in data:
-		return { "status" : "ERROR" }, 200 #400
+		return { "status" : "ERROR", "error": "Email or key not specified in request" }, 200 #400
 	
 	email = data["email"]
 	token = data["key"]
@@ -109,8 +112,8 @@ def verify_user():
 	try:
 		if email != confirm_email(token):
 			return { "status" : "ERROR" }, 200 #400
-	except:
-		return { "status" : "ERROR" }, 200 #400
+	except Exception as e:
+                return { "status" : "ERROR", "error": "Contact a developer" }, 200 #400
 	
 	print("VERIFY: ", str(email))
 	mongo.db.users.update_one({"email" : email}, { '$set' : { 'validated' : True}})
@@ -132,7 +135,7 @@ def login():
 	
 	if user['validated'] == False:
 		return { "status" : "ERROR", "message" : "User has not been validated" }, 200 #400
-	
+
 	if bcrypt.checkpw(creds['password'].encode('utf8'), user['password_hash']):
 		# session['username'] = creds['username']
 		print("LOGIN GOOD")
