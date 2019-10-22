@@ -50,29 +50,29 @@ def add_user():
 	print("DATA: ", str(data))
 
 	if data is None:
-		print("ERROR: DATA IS NONE")
-		return { "status" : "ERROR" , "error": "No data specified" }, 200 #400
+		print("error: DATA IS NONE")
+		return { "status" : "error" , "error": "No data specified" }, 200 #400
 
 	if "username" not in data or "password" not in data or "email" not in data:
-		print("ERROR: IMPROPER DATA")
-		return { "status" : "ERROR", "error": "Not all data fields were found" }, 200 #400
+		print("error: IMPROPER DATA")
+		return { "status" : "error", "error": "Not all data fields were found" }, 200 #400
 
 	uname = data["username"]
-	usr_collection = mongo.db.USERS
+	usr_collection = mongo.db.users
 
 	if usr_collection is not None and usr_collection.find_one({"username" : uname }) is not None:
-		print("ERROR: DATABASE CHECK USERNAME FAILED")
-		return { "status" : "ERROR", "error": "Username taken" }, 200 #400
+		print("error: DATABASE CHECK USERNAME FAILED")
+		return { "status" : "error", "error": "Username taken" }, 200 #400
 
 	email = data["email"]
 	res = EMAIL_REGEX.match(email)
 
 	if res == None:
-		print("ERROR: BAD EMAIL REGEX MATCH")
-		return { "status" : "ERROR" }, 200 #400
+		print("error: BAD EMAIL REGEX MATCH")
+		return { "status" : "error" }, 200 #400
 	if usr_collection is not None and usr_collection.find_one({"email" : email }) is not None:
-		print("ERROR: DATABASE CHECK EMAIL FAILED")
-		return { "status" : "ERROR", "error": "Email already in use" }, 200 #400
+		print("error: DATABASE CHECK EMAIL FAILED")
+		return { "status" : "error", "error": "Email already in use" }, 200 #400
 
 
 	hashed = bcrypt.hashpw(data["password"].encode('utf8'), bcrypt.gensalt())
@@ -104,20 +104,23 @@ def verify_user():
 	data = request.json
 
 	if "email" not in data or "key" not in data:
-		return { "status" : "ERROR", "error": "Email or key not specified in request" }, 200 #400
+		return { "status" : "error", "error": "Email or key not specified in request" }, 200 #400
 
 	email = data["email"]
 	token = data["key"]
 
 	try:
+		ret = confirm_token(token)
+		print("CONF_TOKEN:", ret)
 		if email != confirm_token(token):
-			return { "status" : "ERROR" }, 200 #400
+			print("WEE WOO WEE WOO BAD EMAIL")
+			return { "status" : "error", "error" : "bad email" }, 200 #400
 	except Exception as e:
 		print(e)
-		return { "status" : "ERROR", "error": "Contact a developer" }, 200 #400
+		return { "status" : "error", "error": "Contact a developer" }, 200 #400
 
 	print("VERIFY: ", str(email))
-	mongo.db.USERS.update_one({"email" : email}, { '$set' : { 'validated' : True}})
+	mongo.db.users.update_one({"email" : email}, { '$set' : { 'validated' : True}})
 	return { "status" : "OK"}, 200
 
 @app.route('/login', methods=["POST"])
@@ -125,28 +128,28 @@ def login():
 	print(80*'=')
 	print("/VERIFY() CALLED")
 	creds = request.json
-	users_c = mongo.db.USERS
+	users_c = mongo.db.users
 
 	user = users_c.find_one({'username': creds['username']})
 
 	print("USER VALID", str(user['validated']))
 
 	# Already logged in
-	if session['username']:
-		return { "status" : "OK"}, 200
+#	if session['username']:
+#		return { "status" : "OK"}, 200
 
 	# User does not exist
 	if user is None:
-		return { "status" : "ERROR", "message" : "Username not found" }, 200 #400
+		return { "status" : "error", "error" : "Username not found" }, 200 #400
 
 	if user['validated'] == False:
-		return { "status" : "ERROR", "message" : "User has not been validated" }, 200 #400
+		return { "status" : "error", "error" : "User has not been validated" }, 200 #400
 
 	if bcrypt.checkpw(creds['password'].encode('utf8'), user['password_hash']):
 		# session['username'] = creds['username']
 		print("LOGIN GOOD")
 	else:
-		return { "status" : "ERROR", "message" : "Incorrect password" }, 200 #400
+		return { "status" : "error", "error" : "Incorrect password" }, 200 #400
 
 	return { "status" : "OK"}, 200
 
