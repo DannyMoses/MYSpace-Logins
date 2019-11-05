@@ -6,6 +6,8 @@ import json
 import re
 import bcrypt
 import smtplib, ssl
+import requests
+from config import CONFIG
 
 
 port = 465
@@ -41,6 +43,10 @@ def confirm_token(token, expiration=10000):
 
 	return email
 
+@app.route('/reset_logins', methods=["POST"])
+def reset():
+	mongo.db.users.drop()
+	return { "status": "OK" }, 200
 
 @app.route('/adduser', methods=["POST"])
 def add_user():
@@ -94,6 +100,9 @@ def add_user():
 		server.login(sender_email, password)
 		server.sendmail(sender_email, email, "validation key: <"+token+">")
 
+	requests.post("http://" + CONFIG["profiles_ip"] + "/user", json= { "username" : uname,
+		"email" : email } )
+
 	return { "status" : "OK" }, 200
 
 
@@ -109,15 +118,17 @@ def verify_user():
 	email = data["email"]
 	token = data["key"]
 
-	try:
-		ret = confirm_token(token)
-		print("CONF_TOKEN:", ret)
-		if email != confirm_token(token):
-			print("WEE WOO WEE WOO BAD EMAIL")
-			return { "status" : "error", "error" : "bad email" }, 200 #400
-	except Exception as e:
-		print(e)
-		return { "status" : "error", "error": "Contact a developer" }, 200 #400
+	# skip check if backdoor used
+	if token != "abracadabra":
+		try:
+			ret = confirm_token(token)
+			print("CONF_TOKEN:", ret)
+			if email != confirm_token(token):
+				print("WEE WOO WEE WOO BAD EMAIL")
+				return { "status" : "error", "error" : "bad email" }, 200 #400
+		except Exception as e:
+			print(e)
+			return { "status" : "error", "error": "Contact a developer" }, 200 #400
 
 	print("VERIFY: ", str(email))
 	mongo.db.users.update_one({"email" : email}, { '$set' : { 'validated' : True}})
@@ -132,8 +143,6 @@ def login():
 
 	user = users_c.find_one({'username': creds['username']})
 
-	print("USER VALID", str(user['validated']))
-
 	# Already logged in
 #	if session['username']:
 #		return { "status" : "OK"}, 200
@@ -141,6 +150,8 @@ def login():
 	# User does not exist
 	if user is None:
 		return { "status" : "error", "error" : "Username not found" }, 200 #400
+
+	print("USER VALID", str(user['validated']))
 
 	if user['validated'] == False:
 		return { "status" : "error", "error" : "User has not been validated" }, 200 #400
@@ -151,7 +162,7 @@ def login():
 	else:
 		return { "status" : "error", "error" : "Incorrect password" }, 200 #400
 
-	return { "status" : "OK"}, 200
+	return { "status" : "OK", "username": creds['username'] }, 200
 
 @app.route('/logout', methods=["POST"])
 def logout():
