@@ -4,10 +4,10 @@ After=network.target
 
 [Service]
 User=ubuntu
-Group=nginx
-WorkingDirectory=/home/ubuntu/MYSpace-Logins
-Environment="/home/ubuntu/.local/bin"
-ExecStart=/home/ubuntu/.local/bin/gunicorn -c config/gunicorn.conf wsgi:app
+Group=root
+WorkingDirectory=/home/ubuntu/repo
+Environment="/home/ubuntu/venvs/logins-service/bin"
+ExecStart=/home/ubuntu/venvs/logins-service/bin/gunicorn -c config/gunicorn.conf wsgi:app
 
 [Install]
 WantedBy=multi-user.target

@@ -1,5 +1,6 @@
-flask
-flask_pymongo
+Flask
+Flask-SQLAlchemy
 itsdangerous
 bcrypt
+requests
 gunicorn
