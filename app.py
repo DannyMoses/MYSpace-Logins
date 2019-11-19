@@ -1,6 +1,6 @@
 from flask import Flask, request, session, render_template
 #from flask_pymongo import PyMongo
-from flask_sqlalchemy import SQLAlchemy
+#from flask_sqlalchemy import SQLAlchemy
 from itsdangerous import URLSafeTimedSerializer
 import bcrypt
 import requests
@@ -41,7 +41,7 @@ db = mysql.connector.connect(
 )
 
 
-cursor = db.cursor()
+cursor = db.cursor(buffered=True)
 gmail = Gmail()
 gmail.get_credentials()
 
@@ -65,11 +65,14 @@ def confirm_token(token, expiration=10000):
 	return email
 
 def check_user(user):
-	sql = "SELECT username FROM users WHERE username = %s" 
-	x = cursor.execute(sql, (user,))
-	for x in cursor:
-		if user in x:
-			return True
+	sql = "SELECT username FROM users WHERE username = '" + user + "'" 
+	print("SQL:", sql)
+	x = cursor.execute(sql)
+	print(x)
+	if x is None:
+		return False
+	else:
+		return True
 	return False
 
 def check_email(email):
@@ -79,6 +82,20 @@ def check_email(email):
 		if email in x:
 			return True
 	return False
+
+def check_validated(user):
+	sql = "SELECT validated FROM users WHERE username = %s"
+	cursor.execute(sql, (user,))
+	for x in cursor:
+		return x[0] == 1
+	return False
+
+def get_pwhash(user):
+	sql = "SELECT password_hash FROM users where username = %s"
+	cursor.execute(sql, (user,))
+	for x in cursor:
+		return x[0]
+	return None
 
 @app.route('/reset_logins', methods=["POST"])
 def reset():
@@ -96,28 +113,25 @@ def add_user():
 
 	if data is None:
 		print("error: DATA IS NONE")
-		return { "status" : "error" , "error": "No data specified" }, 200 #400
+		return { "status" : "error" , "error": "No data specified" }, 400
 
 	if "username" not in data or "password" not in data or "email" not in data:
 		print("error: IMPROPER DATA")
-		return { "status" : "error", "error": "Not all data fields were found" }, 200 #400
+		return { "status" : "error", "error": "Not all data fields were found" }, 400
 
 	uname = data["username"]
 	# usr_collection = mongo.db.users
 	# usr_collection is not None and usr_collection.find_one({"username" : uname }) is not None
-	if check_user(uname) is True:
-		print("error: DATABASE CHECK USERNAME FAILED")
-		return { "status" : "error", "error": "Username taken" }, 200 #400
 
 	email = data["email"]
 	res = EMAIL_REGEX.match(email)
 
 	if res == None:
 		print("error: BAD EMAIL REGEX MATCH")
-		return { "status" : "error" }, 200 #400
+		return { "status" : "error" }, 400
 	if check_email(email) is True:
 		print("error: DATABASE CHECK EMAIL FAILED")
-		return { "status" : "error", "error": "Email already in use" }, 200 #400
+		return { "status" : "error", "error": "Email already in use" }, 400
 
 
 	hashed = bcrypt.hashpw(data["password"].encode('utf8'), bcrypt.gensalt())
@@ -135,6 +149,11 @@ def add_user():
 	print(type(hashed))
 	val = (uname, email, hashed)
 	cursor.execute(sql, val)
+
+	if check_user(uname) == True:
+		print("error: DATABASE CHECK USERNAME FAILED")
+		return { "status" : "error", "error": "Username taken" }, 400
+
 	db.commit()
 
 	token = gen_token(email)
@@ -176,10 +195,10 @@ def verify_user():
 			print("CONF_TOKEN:", ret)
 			if email != confirm_token(token):
 				print("WEE WOO WEE WOO BAD EMAIL")
-				return { "status" : "error", "error" : "bad email" }, 200 #400
+				return { "status" : "error", "error" : "bad email" }, 400
 		except Exception as e:
 			print(e)
-			return { "status" : "error", "error": "Contact a developer" }, 200 #400
+			return { "status" : "error", "error": "Contact a developer" }, 400
 
 	print("VERIFY: ", str(email))
 	#mongo.db.users.update_one({"email" : email}, { '$set' : { 'validated' : True}})
@@ -188,25 +207,12 @@ def verify_user():
 	db.commit()
 	return { "status" : "OK"}, 200
 
-def check_validated(user):
-	sql = "SELECT validated FROM users WHERE username = %s"
-	cursor.execute(sql, (user,))
-	for x in cursor:
-		return x[0] == 1
-	return False
-
-def get_pwhash(user):
-	sql = "SELECT password_hash FROM users where username = %s"
-	cursor.execute(sql, (user,))
-	for x in cursor:
-		return x[0]
-	return None
-
 @app.route('/login', methods=["POST"])
 def login():
 	print(80*'=')
-	print("/VERIFY() CALLED")
+	print("/LOGIN() CALLED")
 	creds = request.json
+	print("CREDS:", creds)
 	#users_c = mongo.db.users
 
 	#user = users_c.find_one({'username': creds['username']})
@@ -216,20 +222,22 @@ def login():
 	#	return { "status" : "OK"}, 200
 
 	# User does not exist
-	if check_user(creds['username']) is False: 
-		return { "status" : "error", "error" : "Username not found" }, 200 #400
+	if check_user(creds['username']) == False: 
+		print("NO USER")
+		return { "status" : "error", "error" : "Username not found" }, 400
 
 	# print("USER VALID", str(user['validated']))
 
 	if not check_validated(creds['username']):
-		return { "status" : "error", "error" : "User has not been validated" }, 200 #400
+		print("NOT VALIDATED")
+		return { "status" : "error", "error" : "User has not been validated" }, 400
 	
 	
 	if bcrypt.checkpw(creds['password'].encode('utf8'), get_pwhash(creds['username']).encode('utf8')):
 		# session['username'] = creds['username']
 		print("LOGIN GOOD")
 	else:
-		return { "status" : "error", "error" : "Incorrect password" }, 200 #400
+		return { "status" : "error", "error" : "Incorrect password" }, 400
 
 	return { "status" : "OK", "username": creds['username'] }, 200
 
@@ -239,6 +247,7 @@ def logout():
 	return { "status" : "OK"}, 200
 
 if __name__ == "__main__":
+	print("main")
 	gmail = Gmail()
 	gmail.get_credentials()
 	app.run()

@@ -8,6 +8,8 @@ Group=root
 WorkingDirectory=/home/ubuntu/repo
 #Environment="/home/ubuntu/venvs/logins-service/bin"
 ExecStart=/home/ubuntu/venvs/logins-service/bin/gunicorn -c config/gunicorn.conf wsgi:app
+ExecReload = /bin/kill -s HUP $MAINPID
+ExecStop = /bin/kill -s TERM $MAINPID
 
 [Install]
 WantedBy=multi-user.target
