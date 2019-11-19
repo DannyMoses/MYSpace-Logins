@@ -6,7 +6,7 @@ After=network.target
 User=ubuntu
 Group=root
 WorkingDirectory=/home/ubuntu/repo
-Environment="/home/ubuntu/venvs/logins-service/bin"
+#Environment="/home/ubuntu/venvs/logins-service/bin"
 ExecStart=/home/ubuntu/venvs/logins-service/bin/gunicorn -c config/gunicorn.conf wsgi:app
 
 [Install]

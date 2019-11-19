@@ -1,5 +1,5 @@
 CONFIG= {
-	"profiles_ip" : "10.150.0.24",
+	"profiles_ip" : "10.150.0.21",
 
 	"mysql_usr" : "service",
 	"mysql_pwd" : "yoshi",

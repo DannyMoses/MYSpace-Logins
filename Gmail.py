@@ -25,13 +25,13 @@ APPLICATION_NAME = 'Moses&YangSpace'
 MANUAL_AUTH = True
 # --------------------------------------------------------------------------------------
 
-try:
-    import argparse
-    flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
-    if MANUAL_AUTH:
-        flags.noauth_local_webserver= True
-except ImportError:
-    flags = None
+#try:
+#    import argparse
+#    flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
+#    if MANUAL_AUTH:
+#        flags.noauth_local_webserver= True
+#except ImportError:
+flags = None
 
 
 
@@ -81,7 +81,7 @@ class Gmail():
 	    if not os.path.exists(credential_dir):
 	        os.makedirs(credential_dir)
 	    credential_path = os.path.join(credential_dir,
-	                                   'microsoft_chatbot.json')
+	                                   'credentials.json')
 
 	    store = Storage(credential_path)
 	    credentials = store.get()

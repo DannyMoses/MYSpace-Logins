@@ -9,9 +9,8 @@ import json, re, smtplib, ssl
 from datetime import date
 from config import CONFIG
 
-from Gmail import Gmail
 import mysql.connector
-
+# gmail = None
 #port = 465
 #smtp_server = "smtp.gmail.com"
 #sender_email = "fatyoshienthusiasts@gmail.com"
@@ -31,10 +30,12 @@ app = Flask(__name__)
 app.config["SECURITY_PASSWORD_SALT"] = "fatbirdo"
 app.config["SECRET_KEY"] = "fatyoshi"
 
+from Gmail import Gmail
 #mongo = PyMongo(app)
 db = mysql.connector.connect(
 	host=CONFIG["mysql_server"],
 	user=CONFIG["mysql_usr"],
+	port=CONFIG["mysql_port"],
 	passwd=CONFIG["mysql_pwd"],
 	database=CONFIG["mysql_db"]
 )
@@ -64,16 +65,16 @@ def confirm_token(token, expiration=10000):
 	return email
 
 def check_user(user):
-	sql = "SELECT username FROM users WHERE username = %s"
-	x = cursor.execute(sql, user)
+	sql = "SELECT username FROM users WHERE username = %s" 
+	x = cursor.execute(sql, (user,))
 	for x in cursor:
 		if user in x:
 			return True
 	return False
 
 def check_email(email):
-	sql = "SELECT email FROM users WHERE email = %s"
-	x = cursor.execute(sql, email)
+	sql = "SELECT email FROM users WHERE email=%s"
+	x = cursor.execute(sql, (email,))
 	for x in cursor:
 		if email in x:
 			return True
@@ -81,7 +82,9 @@ def check_email(email):
 
 @app.route('/reset_logins', methods=["POST"])
 def reset():
+	print("/RESET_LOGINS() CALLED")
 	cursor.execute("DELETE FROM users")
+	db.commit()
 	return { "status": "OK" }, 200
 
 @app.route('/adduser', methods=["POST"])
@@ -118,6 +121,7 @@ def add_user():
 
 
 	hashed = bcrypt.hashpw(data["password"].encode('utf8'), bcrypt.gensalt())
+	hashed = hashed.decode('utf-8')
 
 	usr = { "username" : uname,
 		"email" : email,
@@ -128,6 +132,7 @@ def add_user():
 
 	#usr_collection.insert_one(usr)
 	sql = "INSERT INTO users (username, email, password_hash) VALUES (%s, %s, %s)"
+	print(type(hashed))
 	val = (uname, email, hashed)
 	cursor.execute(sql, val)
 	db.commit()
@@ -142,7 +147,7 @@ def add_user():
 
 	to_address = email
 	subject = "Your Moses&YangSpace Activation Key"
-	body = "activation key: <" + token + ">"
+	body = "validation key: <" + token + ">"
 
 	gmail.send_mail(to_address, subject, body)
 
@@ -179,13 +184,23 @@ def verify_user():
 	print("VERIFY: ", str(email))
 	#mongo.db.users.update_one({"email" : email}, { '$set' : { 'validated' : True}})
 	sql = "UPDATE users SET validated = 1 WHERE email = %s"
-	cursor.execute(sql, email)
+	cursor.execute(sql, (email,))
 	db.commit()
 	return { "status" : "OK"}, 200
 
 def check_validated(user):
 	sql = "SELECT validated FROM users WHERE username = %s"
-	return cursor.execute(sql, user)[0]
+	cursor.execute(sql, (user,))
+	for x in cursor:
+		return x[0] == 1
+	return False
+
+def get_pwhash(user):
+	sql = "SELECT password_hash FROM users where username = %s"
+	cursor.execute(sql, (user,))
+	for x in cursor:
+		return x[0]
+	return None
 
 @app.route('/login', methods=["POST"])
 def login():
@@ -201,15 +216,16 @@ def login():
 	#	return { "status" : "OK"}, 200
 
 	# User does not exist
-	if check_user(cred['username']) is False: 
+	if check_user(creds['username']) is False: 
 		return { "status" : "error", "error" : "Username not found" }, 200 #400
 
 	# print("USER VALID", str(user['validated']))
 
-	if check_validated(cred['username']) == False:
+	if not check_validated(creds['username']):
 		return { "status" : "error", "error" : "User has not been validated" }, 200 #400
-
-	if bcrypt.checkpw(creds['password'].encode('utf8'), user['password_hash']):
+	
+	
+	if bcrypt.checkpw(creds['password'].encode('utf8'), get_pwhash(creds['username']).encode('utf8')):
 		# session['username'] = creds['username']
 		print("LOGIN GOOD")
 	else:
@@ -222,3 +238,7 @@ def logout():
 	session.clear()
 	return { "status" : "OK"}, 200
 
+if __name__ == "__main__":
+	gmail = Gmail()
+	gmail.get_credentials()
+	app.run()
