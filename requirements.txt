@@ -4,3 +4,5 @@ itsdangerous
 bcrypt
 requests
 gunicorn
+google-api-python-client == 1.5.5
+mysql-connector-python

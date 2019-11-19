@@ -1,9 +1,9 @@
 CONFIG= {
-	"profiles_ip" : "PROFILES_SERVICE_IP",
+	"profiles_ip" : "10.150.0.24",
 
-	"mysql_usr" : "[user]",
-	"mysql_pwd" : "[password]",
-	"mysql_server" : "[db ip]",
-	"mysql_port" : "[db service port]",
-	"mysql_db" : "[db name]"
+	"mysql_usr" : "service",
+	"mysql_pwd" : "yoshi",
+	"mysql_server" : "10.142.0.9",
+	"mysql_port" : "3306",
+	"mysql_db" : "Users"
 }

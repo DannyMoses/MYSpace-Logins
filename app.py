@@ -1,28 +1,48 @@
 from flask import Flask, request, session, render_template
-from flask_pymongo import PyMongo
-from datetime import date
+#from flask_pymongo import PyMongo
+from flask_sqlalchemy import SQLAlchemy
 from itsdangerous import URLSafeTimedSerializer
-import json
-import re
 import bcrypt
-import smtplib, ssl
 import requests
+
+import json, re, smtplib, ssl
+from datetime import date
 from config import CONFIG
 
+from Gmail import Gmail
+import mysql.connector
 
-port = 465
-smtp_server = "smtp.gmail.com"
-sender_email = "fatyoshienthusiasts@gmail.com"
-password = "Ferdmansleftcheek123"
-context = ssl.create_default_context()
+#port = 465
+#smtp_server = "smtp.gmail.com"
+#sender_email = "fatyoshienthusiasts@gmail.com"
+#password = "Ferdmansleftcheek123"
+#context = ssl.create_default_context()
 
 app = Flask(__name__)
-app.config["MONGO_URI"] = "mongodb://localhost:27017/users"
+#app.config["MONGO_URI"] = "mongodb://localhost:27017/users"
+#app.config["SQLALCHEMY_DATABASE_URI"] = "mysql://{}:{}@{}:{}/{}".format(
+#						config['mysql_usr'],
+#						config['mysql_pwd'],
+#						config['mysql_server'],
+#						config['mysql_port'],
+#						config['mysql_db']
+#					)
 
 app.config["SECURITY_PASSWORD_SALT"] = "fatbirdo"
 app.config["SECRET_KEY"] = "fatyoshi"
 
-mongo = PyMongo(app)
+#mongo = PyMongo(app)
+db = mysql.connector.connect(
+	host=CONFIG["mysql_server"],
+	user=CONFIG["mysql_usr"],
+	passwd=CONFIG["mysql_pwd"],
+	database=CONFIG["mysql_db"]
+)
+
+
+cursor = db.cursor()
+gmail = Gmail()
+gmail.get_credentials()
 
 EMAIL_REGEX = re.compile(r"([A-Z0-9_.+-]+@[A-Z0-9-]+.[A-Z0-9-.]+)", re.IGNORECASE)
 
@@ -43,9 +63,25 @@ def confirm_token(token, expiration=10000):
 
 	return email
 
+def check_user(user):
+	sql = "SELECT username FROM users WHERE username = %s"
+	x = cursor.execute(sql, user)
+	for x in cursor:
+		if user in x:
+			return True
+	return False
+
+def check_email(email):
+	sql = "SELECT email FROM users WHERE email = %s"
+	x = cursor.execute(sql, email)
+	for x in cursor:
+		if email in x:
+			return True
+	return False
+
 @app.route('/reset_logins', methods=["POST"])
 def reset():
-	mongo.db.users.drop()
+	cursor.execute("DELETE FROM users")
 	return { "status": "OK" }, 200
 
 @app.route('/adduser', methods=["POST"])
@@ -64,9 +100,9 @@ def add_user():
 		return { "status" : "error", "error": "Not all data fields were found" }, 200 #400
 
 	uname = data["username"]
-	usr_collection = mongo.db.users
-
-	if usr_collection is not None and usr_collection.find_one({"username" : uname }) is not None:
+	# usr_collection = mongo.db.users
+	# usr_collection is not None and usr_collection.find_one({"username" : uname }) is not None
+	if check_user(uname) is True:
 		print("error: DATABASE CHECK USERNAME FAILED")
 		return { "status" : "error", "error": "Username taken" }, 200 #400
 
@@ -76,7 +112,7 @@ def add_user():
 	if res == None:
 		print("error: BAD EMAIL REGEX MATCH")
 		return { "status" : "error" }, 200 #400
-	if usr_collection is not None and usr_collection.find_one({"email" : email }) is not None:
+	if check_email(email) is True:
 		print("error: DATABASE CHECK EMAIL FAILED")
 		return { "status" : "error", "error": "Email already in use" }, 200 #400
 
@@ -90,15 +126,25 @@ def add_user():
 		"validated" : False
 		}
 
-	usr_collection.insert_one(usr)
+	#usr_collection.insert_one(usr)
+	sql = "INSERT INTO users (username, email, password_hash) VALUES (%s, %s, %s)"
+	val = (uname, email, hashed)
+	cursor.execute(sql, val)
+	db.commit()
 
 	token = gen_token(email)
 
-	html = render_template("user/activate.html", token=token)
-	subject = "confirmation email"
-	with smtplib.SMTP_SSL(smtp_server, port, context=context) as server:
-		server.login(sender_email, password)
-		server.sendmail(sender_email, email, "validation key: <"+token+">")
+	#html = render_template("user/activate.html", token=token)
+	#subject = "confirmation email"
+	#with smtplib.SMTP_SSL(smtp_server, port, context=context) as server:
+	#	server.login(sender_email, password)
+	#	server.sendmail(sender_email, email, "validation key: <"+token+">")
+
+	to_address = email
+	subject = "Your Moses&YangSpace Activation Key"
+	body = "activation key: <" + token + ">"
+
+	gmail.send_mail(to_address, subject, body)
 
 	requests.post("http://" + CONFIG["profiles_ip"] + "/user", json= { "username" : uname,
 		"email" : email } )
@@ -131,29 +177,36 @@ def verify_user():
 			return { "status" : "error", "error": "Contact a developer" }, 200 #400
 
 	print("VERIFY: ", str(email))
-	mongo.db.users.update_one({"email" : email}, { '$set' : { 'validated' : True}})
+	#mongo.db.users.update_one({"email" : email}, { '$set' : { 'validated' : True}})
+	sql = "UPDATE users SET validated = 1 WHERE email = %s"
+	cursor.execute(sql, email)
+	db.commit()
 	return { "status" : "OK"}, 200
+
+def check_validated(user):
+	sql = "SELECT validated FROM users WHERE username = %s"
+	return cursor.execute(sql, user)[0]
 
 @app.route('/login', methods=["POST"])
 def login():
 	print(80*'=')
 	print("/VERIFY() CALLED")
 	creds = request.json
-	users_c = mongo.db.users
+	#users_c = mongo.db.users
 
-	user = users_c.find_one({'username': creds['username']})
+	#user = users_c.find_one({'username': creds['username']})
 
 	# Already logged in
-#	if session['username']:
-#		return { "status" : "OK"}, 200
+	#if session['username']:
+	#	return { "status" : "OK"}, 200
 
 	# User does not exist
-	if user is None:
+	if check_user(cred['username']) is False: 
 		return { "status" : "error", "error" : "Username not found" }, 200 #400
 
-	print("USER VALID", str(user['validated']))
+	# print("USER VALID", str(user['validated']))
 
-	if user['validated'] == False:
+	if check_validated(cred['username']) == False:
 		return { "status" : "error", "error" : "User has not been validated" }, 200 #400
 
 	if bcrypt.checkpw(creds['password'].encode('utf8'), user['password_hash']):
