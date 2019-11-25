@@ -1,20 +1,13 @@
 from flask import Flask, request, session, render_template
 from itsdangerous import URLSafeTimedSerializer
 import bcrypt, requests
+import MySQLdb
 
-from Gmail import Gmail
-import mysql.connector
-
-import logging, json, re, smtplib, ssl
+import logging, json, re, smtplib
 from datetime import date
 from config import CONFIG
 
-# gmail = None
-#port = 465
-#smtp_server = "smtp.gmail.com"
-#sender_email = "fatyoshienthusiasts@gmail.com"
-#password = "Ferdmansleftcheek123"
-#context = ssl.create_default_context()
+sender_email = "fatyoshienthusiasts@gmail.com"
 
 app = Flask(__name__)
 #app.config["SQLALCHEMY_DATABASE_URI"] = "mysql://{}:{}@{}:{}/{}".format(
@@ -28,18 +21,14 @@ app = Flask(__name__)
 app.config["SECURITY_PASSWORD_SALT"] = "fatbirdo"
 app.config["SECRET_KEY"] = "fatyoshi"
 
-db = mysql.connector.connect(
+db = MySQLdb.connect(
 	host=CONFIG["mysql_server"],
 	port=CONFIG["mysql_port"],
 	user=CONFIG["mysql_usr"],
 	passwd=CONFIG["mysql_pwd"],
-	database=CONFIG["mysql_db"],
-	buffered=True
+	db=CONFIG["mysql_db"]
 )
 
-
-gmail = Gmail()
-gmail.get_credentials()
 
 EMAIL_REGEX = re.compile(r"([A-Z0-9_.+-]+@[A-Z0-9-]+.[A-Z0-9-.]+)", re.IGNORECASE)
 
@@ -49,6 +38,7 @@ if __name__ != '__main__':
 	app.logger.handlers = gunicorn_logger.handlers
 	app.logger.setLevel(gunicorn_logger.level)
 
+# Email validation
 def gen_token(email):
 	serializer = URLSafeTimedSerializer(app.config["SECRET_KEY"])
 	return serializer.dumps(email, salt=app.config["SECURITY_PASSWORD_SALT"])
@@ -66,87 +56,89 @@ def confirm_token(token, expiration=10000):
 
 	return email
 
-# Assumes db.cursor(dictionary=True)
+# Fetch data from database
 def get_user(user, cursor):
 	sql = "SELECT * FROM users WHERE username=%s LIMIT 1"
 	#app.logger.info("check_user SQL: " + sql)
 	#print("SQL:", sql)
 	db.commit()
 	cursor.execute(sql, (user,))
-	row = cursor.fetchall()
+	row = cursor.fetchone()
 
 	app.logger.debug("Result: ")
+	app.logger.debug(str(row))
+
 	if not row:
 		return None
-
-	app.logger.debug(json.dumps(row))
-	return row[0]
+	else:
+		user_data = {
+			"username": row[0],
+			"email": row[1],
+			"password_hash": row[2],
+			"validated": row[3]
+		}
+		return user_data
 
 def check_user(user, cursor):
-	sql = "SELECT username FROM users WHERE username=%s"
+	sql = "SELECT username FROM users WHERE username=%s LIMIT 1"
 	#app.logger.info("check_user SQL: " + sql)
 	#print("SQL:", sql)
+	db.commit()
 	cursor.execute(sql, (user,))
-	app.logger.debug("Result: ")
+	row = cursor.fetchone()
 
-	rows = cursor.fetchall()
-	if not rows:
+	app.logger.debug("Result: ")
+	app.logger.debug(str(row))
+
+	if not row or user != row[0]:
 		return False
-	
-	app.logger.debug(rows)
-	for x in rows:
-		if user == x['username']:
-			return True
-	return False
+	else:
+		return False
 
 def check_email(email, cursor):
-	sql = "SELECT email FROM users WHERE email=%s"
-	app.logger.info("check_email SQL: {} email: {}".format(sql, email))
+	sql = "SELECT email FROM users WHERE email=%s LIMIT 1"
+	#app.logger.info("check_email SQL: {} email: {}".format(sql, email))
 	db.commit()
 	cursor.execute(sql, (email,))
-	app.logger.debug("Result: ")
+	row = cursor.fetchone()
 
-	rows = cursor.fetchall()
-	if not rows:
+	app.logger.debug("Result: ")
+	app.logger.debug(row)
+
+	if not row or email != row[0]:
 		return False
-	
-	app.logger.debug(rows)
-	for x in rows:
-		app.logger.debug(x)
-		if email == x['email']:
-			return True
-	return False
+	else:
+		return True
 
 def is_validated(user, cursor):
-	sql = "SELECT validated FROM users WHERE username = %s"
+	sql = "SELECT validated FROM users WHERE username = %s LIMIT 1"
 	#app.logger.info("is_validated SQL: " + sql)
 	db.commit()
 	cursor.execute(sql, (user,))
+	row = cursor.fetchone()
 
-	rows = cursor.fetchall()
-	if not rows:
+	app.logger.debug("Result: ")
+	app.logger.debug(row)
+
+	if not row:
 		return False
-	
-	app.logger.debug(rows)
-	for x in rows:
-		return x['validated'] == 1
-	return False
+	else:
+		return row[0] == 1
 
 def get_pwhash(user, cursor):
 	sql = "SELECT password_hash FROM users where username = %s"
 	#app.logger.info("check_pwhash SQL: " + sql)
 	db.commit()
 	cursor.execute(sql, (user,))
+	row = cursor.fetchone()
 
-	rows = cursor.fetchall()
-	if not rows:
+	app.logger.debug("Result: ")
+	app.logger.debug(row)
+
+	if not row:
 		return None
-	
-	app.logger.debug(rows)
-	for x in rows:
-		return x['password_hash']
-
-	return None
+	else:
+		return row['password_hash']
 
 # Reset
 @app.route('/reset_logins', methods=["POST"])
@@ -179,14 +171,14 @@ def add_user():
 		app.logger.debug("/adduser not all data fields found")
 		return { "status" : "error", "error": "Not all data fields were found" }, 400
 
-	uname = data["username"]
+	#uname = data["username"]
 
-	email = data["email"]
-	res = EMAIL_REGEX.match(email)
+	#email = data["email"]
+	res = EMAIL_REGEX.match(data['email'])
 
 	if res == None:
 		#print("error: BAD EMAIL REGEX MATCH")
-		return { "status" : "error" }, 400
+		return { "status" : "error", "error" : "Not a valid email address" }, 400
 
 #	if check_email(email, cursor):
 #		#print("error: DATABASE CHECK EMAIL FAILED")
@@ -200,21 +192,17 @@ def add_user():
 #
 #	app.logger.debug("/adduser user {} check passed".format(data['username']))
 
+	# Hash + salt password
 	hashed = bcrypt.hashpw(data["password"].encode('utf8'), bcrypt.gensalt())
 	hashed = hashed.decode('utf-8')
 
-	usr = { "username" : uname,
-		"email" : email,
-		"password" : data["password"],
-		"password_hash" : hashed,
-		"validated" : False
-		}
-
-	cursor = db.cursor(dictionary=True)
+	# Try to insert user in database
+	# Inform user if username/email is already used
+	cursor = db.cursor()
 	try:
 		sql = "INSERT IGNORE INTO users (username, email, password_hash) VALUES (%s, %s, %s)"
 		#print(type(hashed))
-		val = (uname, email, hashed)
+		val = (data['username'], data['email'], hashed)
 
 		cursor.execute(sql, val)
 		db.commit()
@@ -226,29 +214,51 @@ def add_user():
 			return { "status" : "error", "error": error }, 400
 
 		# Check email is in database
-		if check_email(email, cursor):
+		if check_email(data['email'], cursor):
 			app.logger.debug("/adduser {} <{}> found in database".format(data['username'], data['email']))
 		else:
 			app.logger.debug("/adduser {} <{}> not in database".format(data['username'], data['email']))
 	finally:
 		cursor.close()
 
-	token = gen_token(email)
+	# Send verification email
+	# Delete database entry if email sending failed
+	token = gen_token(data['email'])
 
-	#html = render_template("user/activate.html", token=token)
-	#subject = "confirmation email"
-	#with smtplib.SMTP_SSL(smtp_server, port, context=context) as server:
-	#	server.login(sender_email, password)
-	#	server.sendmail(sender_email, email, "validation key: <"+token+">")
+	email_json = {
+		"key": CONFIG['email_key'],
+		"from": sender_email,
+		"to": data['email'],
+		"subject": "Your Moses&YangSpace Activation Key",
+		"body": "validation key: <" + token + ">",
+	}
 
-	to_address = email
-	subject = "Your Moses&YangSpace Activation Key"
-	body = "validation key: <" + token + ">"
+	r = requests.post("http://" + CONFIG["email_ip"] + "/send_email", json=email_json )
 
-	gmail.send_mail(to_address, subject, body)
+	app.logger.info("Send email status code: {}".format(r.status_code))
+	app.logger.debug(r.content)
+	if r.status_code != 200:
+		cursor = db.cursor()
+		try:
+			sql = "DELETE FROM users WHERE username=%s"
+			cursor.execute(sql, (data['username'],))
+			db.commit()
+		finally:
+			cursor.close()
 
-	requests.post("http://" + CONFIG["profiles_ip"] + "/user", json= { "username" : uname,
-		"email" : email } )
+		if r.status_code == 488:
+			app.logger.warning("Validation email refused by recipient")
+			return { "status": "error", "error": "Email address could not be sent." }, 400
+		if r.status_code == 400:
+			app.logger.error("/send_email request missing POST parameters")
+			return { "status": "error", "error": "Problems sending email. Contact a developer." }, 500
+		if r.status_code == 500:
+			app.logger.error("Validation email could not be sent")
+			return { "status": "error", "error": "Problems sending email. Contact a developer." }, 500
+
+	# Create user profile in profiles service
+	requests.post("http://" + CONFIG["profiles_ip"] + "/user", json= { "username" : data['username'],
+		"email" : data['email'] } )
 
 	app.logger.info("/adduser user {} email sent".format(data['username']))
 
@@ -268,7 +278,7 @@ def verify_user():
 	email = data["email"]
 	token = data["key"]
 
-	cursor = db.cursor(dictionary=True)
+	cursor = db.cursor()
 	try:
 		# Check email is in database
 		if check_email(email, cursor) == False:
@@ -316,7 +326,7 @@ def login():
 	app.logger.debug("/login creds: " + json.dumps(creds))
 
 	db_user = None
-	cursor = db.cursor(dictionary=True)
+	cursor = db.cursor()
 	try:
 		# Get user info
 		db_user = get_user(creds['username'], cursor)
@@ -358,6 +368,4 @@ def login():
 
 if __name__ == "__main__":
 	print("main")
-	gmail = Gmail()
-	gmail.get_credentials()
 	app.run()

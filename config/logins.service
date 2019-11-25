@@ -7,7 +7,7 @@ User=ubuntu
 Group=root
 WorkingDirectory=/home/ubuntu/repo
 #Environment="/home/ubuntu/venvs/logins-service/bin"
-ExecStart=/home/ubuntu/venvs/logins-service/bin/gunicorn -c config/gunicorn.conf wsgi:app
+ExecStart=/home/ubuntu/venvs/logins-service/bin/gunicorn -c config/gunicorn.conf.py wsgi:app
 ExecReload = /bin/kill -s HUP $MAINPID
 ExecStop = /bin/kill -s TERM $MAINPID
 
