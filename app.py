@@ -7,7 +7,12 @@ import logging, json, re, smtplib
 from datetime import date
 from config import CONFIG
 
-sender_email = "fatyoshienthusiasts@gmail.com"
+#import os
+#from sendgrid import SendGridAPIClient
+#from sendgrid.helpers.mail import Mail
+#import asyncio
+
+sender_email = "ubuntu@myspace-logins-1.c.winged-sol-258623.internal"
 
 app = Flask(__name__)
 #app.config["SQLALCHEMY_DATABASE_URI"] = "mysql://{}:{}@{}:{}/{}".format(
@@ -21,6 +26,14 @@ app = Flask(__name__)
 app.config["SECURITY_PASSWORD_SALT"] = "fatbirdo"
 app.config["SECRET_KEY"] = "fatyoshi"
 
+#db = MySQLdb.connect(
+#	host=["mysql_server"],
+#	port=CONFIG["mysql_port"],
+#	user=CONFIG["mysql_usr"],
+#	passwd=CONFIG["mysql_pwd"],
+#	db=CONFIG["mysql_db"]
+#)
+
 db = MySQLdb.connect(
 	host=CONFIG["mysql_server"],
 	port=CONFIG["mysql_port"],
@@ -29,8 +42,11 @@ db = MySQLdb.connect(
 	db=CONFIG["mysql_db"]
 )
 
+#cursor = db.cursor()
 
 EMAIL_REGEX = re.compile(r"([A-Z0-9_.+-]+@[A-Z0-9-]+.[A-Z0-9-.]+)", re.IGNORECASE)
+
+#sg = SendGridAPIClient(os.environ.get('SENDGRID_API_KEY'))
 
 # Setup logging
 if __name__ != '__main__':
@@ -78,6 +94,18 @@ def get_user(user, cursor):
 			"validated": row[3]
 		}
 		return user_data
+
+#async def send_email_helper(message):
+#	try:
+#		response = sg.send(message)
+#		if response.stats_cose < 300:
+#			print("Email processed, response.body, response.status_code")
+#	except Exception as e:
+#		print(str(e))
+#
+#@asyncio.coroutine
+#def send_email(message):
+#	asyncio.async(send_email_helper(message))
 
 def check_user(user, cursor):
 	sql = "SELECT username FROM users WHERE username=%s LIMIT 1"
@@ -147,6 +175,7 @@ def reset():
 	app.logger.warning("/RESET_LOGINS() CALLED")
 
 	cursor = db.cursor()
+	#cursor.execute("TRUNCATE TABLE users")
 	cursor.execute("DELETE FROM users")
 	db.commit()
 	cursor.close()
@@ -155,8 +184,9 @@ def reset():
 # Adduser
 @app.route('/adduser', methods=["POST"])
 def add_user():
-	#print(80*'=')
-	#print("/ADDUSER() CALLED")
+	#return { "status" : "OK" }, 200
+	print(80*'=')
+	print("/ADDUSER() CALLED")
 	data = request.json
 	#print("DATA: ", str(data))
 	app.logger.debug("/adduser data: " + json.dumps(data))
@@ -171,24 +201,25 @@ def add_user():
 		app.logger.debug("/adduser not all data fields found")
 		return { "status" : "error", "error": "Not all data fields were found" }, 400
 
-	#uname = data["username"]
+	uname = data["username"]
 
-	#email = data["email"]
+	email = data["email"]
 	res = EMAIL_REGEX.match(data['email'])
 
 	if res == None:
 		#print("error: BAD EMAIL REGEX MATCH")
 		return { "status" : "error", "error" : "Not a valid email address" }, 400
 
-#	if check_email(email, cursor):
-#		#print("error: DATABASE CHECK EMAIL FAILED")
-#		return { "status" : "error", "error": "Email already in use" }, 400
+	cursor = db.cursor()
+	if check_email(email, cursor):
+		print("error: DATABASE CHECK EMAIL FAILED")
+		return { "status" : "error", "error": "Email already in use" }, 400
 #
 #	app.logger.debug("/adduser email {} check passed".format(data['email']))
 #
-#	if check_user(uname, cursor):
-#		#print("error: DATABASE CHECK USERNAME FAILED")
-#		return { "status" : "error", "error": "Username taken" }, 400
+	if check_user(uname, cursor):
+		print("error: DATABASE CHECK USERNAME FAILED")
+		return { "status" : "error", "error": "Username taken" }, 400
 #
 #	app.logger.debug("/adduser user {} check passed".format(data['username']))
 
@@ -196,35 +227,52 @@ def add_user():
 	hashed = bcrypt.hashpw(data["password"].encode('utf8'), bcrypt.gensalt())
 	hashed = hashed.decode('utf-8')
 
+	#return { "status" : "OK" }, 200
+
 	# Try to insert user in database
 	# Inform user if username/email is already used
-	cursor = db.cursor()
 	try:
-		sql = "INSERT IGNORE INTO users (username, email, password_hash) VALUES (%s, %s, %s)"
+		sql = "INSERT INTO users (username, email, password_hash) VALUES (%s, %s, %s)"
 		#print(type(hashed))
 		val = (data['username'], data['email'], hashed)
 
 		cursor.execute(sql, val)
 		db.commit()
 
-		if cursor.rowcount == 0:
-			error = "{} <{}> already in use".format(data['username'], data['email'])
-			#print("/adduser {} <{}> not unique".format(data['username'], data['email']))
-			app.logger.debug("/adduser {} <{}> not unique".format(data['username'], data['email']))
-			return { "status" : "error", "error": error }, 400
+	#	if cursor.rowcount == 0:
+	#		error = "{} <{}> already in use".format(data['username'], data['email'])
+	#		#print("/adduser {} <{}> not unique".format(data['username'], data['email']))
+	#		app.logger.debug("/adduser {} <{}> not unique".format(data['username'], data['email']))
+	#		return { "status" : "error", "error": error }, 400
 
 		# Check email is in database
-		if check_email(data['email'], cursor):
-			app.logger.debug("/adduser {} <{}> found in database".format(data['username'], data['email']))
-		else:
-			app.logger.debug("/adduser {} <{}> not in database".format(data['username'], data['email']))
+		#if check_email(data['email'], cursor):
+		#	app.logger.debug("/adduser {} <{}> found in database".format(data['username'], data['email']))
+		#else:
+		#	app.logger.debug("/adduser {} <{}> not in database".format(data['username'], data['email']))
 	finally:
 		cursor.close()
+		print("transaction done")
 
 	# Send verification email
 	# Delete database entry if email sending failed
 	token = gen_token(data['email'])
+	print("SENDING EMAIL")
+	#msg = Mail(
+	#	from_email=sender_email,
+	#	to_emails=data['email'],
+	#	subject="Your Moses&YangSpace Activation Key",
+	#	html_content="validation key: &lt;" + token + "&gt;")
+	
 
+	#try:
+	#	sg = SendGridAPIClient(os.environ.get('SENDGRID_API_KEY'))
+	#	response = sg.send(msg)
+	#	print("EMAIL RESPONSE", respone.status_code)
+	#except Exception as e:
+	#	print(str(e))
+
+	#send_email(msg)
 	email_json = {
 		"key": CONFIG['email_key'],
 		"from": sender_email,
