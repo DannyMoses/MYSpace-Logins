@@ -7,32 +7,19 @@ import logging, json, re, smtplib
 from datetime import date
 from config import CONFIG
 
-#import os
-#from sendgrid import SendGridAPIClient
-#from sendgrid.helpers.mail import Mail
+import os
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 #import asyncio
 
-sender_email = "ubuntu@myspace-logins-1.c.winged-sol-258623.internal"
+#sender_email = "ubuntu@myspace-logins-1.c.winged-sol-258623.internal" # Domain not recognized
+#sender_email = "fatyoshi@myspace-email.cloud.compas.cs.stonybrook.edu" # Domain not recognized
+sender_email = "fatyoshienthusiasts@gmail.com"
 
 app = Flask(__name__)
-#app.config["SQLALCHEMY_DATABASE_URI"] = "mysql://{}:{}@{}:{}/{}".format(
-#						config['mysql_usr'],
-#						config['mysql_pwd'],
-#						config['mysql_server'],
-#						config['mysql_port'],
-#						config['mysql_db']
-#					)
 
 app.config["SECURITY_PASSWORD_SALT"] = "fatbirdo"
 app.config["SECRET_KEY"] = "fatyoshi"
-
-#db = MySQLdb.connect(
-#	host=["mysql_server"],
-#	port=CONFIG["mysql_port"],
-#	user=CONFIG["mysql_usr"],
-#	passwd=CONFIG["mysql_pwd"],
-#	db=CONFIG["mysql_db"]
-#)
 
 db = MySQLdb.connect(
 	host=CONFIG["mysql_server"],
@@ -75,7 +62,7 @@ def confirm_token(token, expiration=10000):
 # Fetch data from database
 def get_user(user, cursor):
 	sql = "SELECT * FROM users WHERE username=%s LIMIT 1"
-	#app.logger.info("check_user SQL: " + sql)
+	#app.logger.debug("check_user SQL: " + sql)
 	#print("SQL:", sql)
 	db.commit()
 	cursor.execute(sql, (user,))
@@ -109,7 +96,7 @@ def get_user(user, cursor):
 
 def check_user(user, cursor):
 	sql = "SELECT username FROM users WHERE username=%s LIMIT 1"
-	#app.logger.info("check_user SQL: " + sql)
+	#app.logger.debug("check_user SQL: " + sql)
 	#print("SQL:", sql)
 	db.commit()
 	cursor.execute(sql, (user,))
@@ -124,8 +111,8 @@ def check_user(user, cursor):
 		return False
 
 def check_email(email, cursor):
-	sql = "SELECT email FROM users WHERE email=%s LIMIT 1"
-	#app.logger.info("check_email SQL: {} email: {}".format(sql, email))
+	sql = "SELECT * FROM users WHERE email=%s"
+	#app.logger.debug("check_email SQL: {} email: {}".format(sql, email))
 	db.commit()
 	cursor.execute(sql, (email,))
 	row = cursor.fetchone()
@@ -133,14 +120,14 @@ def check_email(email, cursor):
 	app.logger.debug("Result: ")
 	app.logger.debug(row)
 
-	if not row or email != row[0]:
+	if row is None or len(row) == 0:
 		return False
 	else:
 		return True
 
 def is_validated(user, cursor):
 	sql = "SELECT validated FROM users WHERE username = %s LIMIT 1"
-	#app.logger.info("is_validated SQL: " + sql)
+	#app.logger.debug("is_validated SQL: " + sql)
 	db.commit()
 	cursor.execute(sql, (user,))
 	row = cursor.fetchone()
@@ -155,7 +142,7 @@ def is_validated(user, cursor):
 
 def get_pwhash(user, cursor):
 	sql = "SELECT password_hash FROM users where username = %s"
-	#app.logger.info("check_pwhash SQL: " + sql)
+	#app.logger.debug("check_pwhash SQL: " + sql)
 	db.commit()
 	cursor.execute(sql, (user,))
 	row = cursor.fetchone()
@@ -185,20 +172,20 @@ def reset():
 @app.route('/adduser', methods=["POST"])
 def add_user():
 	#return { "status" : "OK" }, 200
-	print(80*'=')
-	print("/ADDUSER() CALLED")
+	#print(80*'=')
+	#print("/ADDUSER() CALLED")
 	data = request.json
 	#print("DATA: ", str(data))
 	app.logger.debug("/adduser data: " + json.dumps(data))
 
 	if data is None:
 		#print("error: DATA IS NONE")
-		app.logger.debug("/adduser no data specified")
+		app.logger.info("/adduser no data specified")
 		return { "status" : "error" , "error": "No data specified" }, 400
 
 	if "username" not in data or "password" not in data or "email" not in data:
 		#print("error: IMPROPER DATA")
-		app.logger.debug("/adduser not all data fields found")
+		app.logger.info("/adduser not all data fields found")
 		return { "status" : "error", "error": "Not all data fields were found" }, 400
 
 	uname = data["username"]
@@ -211,39 +198,37 @@ def add_user():
 		return { "status" : "error", "error" : "Not a valid email address" }, 400
 
 	cursor = db.cursor()
-	if check_email(email, cursor):
-		print("error: DATABASE CHECK EMAIL FAILED")
-		return { "status" : "error", "error": "Email already in use" }, 400
+#	if check_email(email, cursor):
+#		print("error: DATABASE CHECK EMAIL FAILED")
+#		return { "status" : "error", "error": "Email already in use" }, 400
 #
 #	app.logger.debug("/adduser email {} check passed".format(data['email']))
 #
-	if check_user(uname, cursor):
-		print("error: DATABASE CHECK USERNAME FAILED")
-		return { "status" : "error", "error": "Username taken" }, 400
+#	if check_user(uname, cursor):
+#		print("error: DATABASE CHECK USERNAME FAILED")
+#		return { "status" : "error", "error": "Username taken" }, 400
 #
 #	app.logger.debug("/adduser user {} check passed".format(data['username']))
 
 	# Hash + salt password
-	hashed = bcrypt.hashpw(data["password"].encode('utf8'), bcrypt.gensalt())
+	hashed = bcrypt.hashpw(data["password"].encode('utf8'), bcrypt.gensalt(5))
 	hashed = hashed.decode('utf-8')
-
-	#return { "status" : "OK" }, 200
 
 	# Try to insert user in database
 	# Inform user if username/email is already used
 	try:
-		sql = "INSERT INTO users (username, email, password_hash) VALUES (%s, %s, %s)"
+		sql = "INSERT IGNORE INTO users (username, email, password_hash) VALUES (%s, %s, %s)"
 		#print(type(hashed))
 		val = (data['username'], data['email'], hashed)
 
 		cursor.execute(sql, val)
 		db.commit()
 
-	#	if cursor.rowcount == 0:
-	#		error = "{} <{}> already in use".format(data['username'], data['email'])
-	#		#print("/adduser {} <{}> not unique".format(data['username'], data['email']))
-	#		app.logger.debug("/adduser {} <{}> not unique".format(data['username'], data['email']))
-	#		return { "status" : "error", "error": error }, 400
+		if cursor.rowcount == 0:
+			error = "{} <{}> already in use".format(data['username'], data['email'])
+			#print("/adduser {} <{}> not unique".format(data['username'], data['email']))
+			app.logger.info("/adduser {} <{}> not unique".format(data['username'], data['email']))
+			return { "status" : "error", "error": error }, 400
 
 		# Check email is in database
 		#if check_email(data['email'], cursor):
@@ -251,28 +236,29 @@ def add_user():
 		#else:
 		#	app.logger.debug("/adduser {} <{}> not in database".format(data['username'], data['email']))
 	finally:
+#		if cursor.rowcount == 0:
+#			print("SQL ERROR ENCOUNTERED")
+#			return { "status" : "error" , "error" : "invalid username or email" }, 400
 		cursor.close()
-		print("transaction done")
+		#print("transaction done")
 
 	# Send verification email
 	# Delete database entry if email sending failed
 	token = gen_token(data['email'])
-	print("SENDING EMAIL")
-	#msg = Mail(
-	#	from_email=sender_email,
-	#	to_emails=data['email'],
-	#	subject="Your Moses&YangSpace Activation Key",
-	#	html_content="validation key: &lt;" + token + "&gt;")
-	
+	#print("SENDING EMAIL")
+#	msg = Mail(
+#		from_email=sender_email,
+#		to_emails=data['email'],
+#		subject="Your Moses&YangSpace Activation Key",
+#		html_content="validation key: &lt;" + token + "&gt;")
+#
+#	try:
+#		sg = SendGridAPIClient(os.environ.get('SENDGRID_API_KEY'))
+#		response = sg.send(msg)
+#		print("EMAIL RESPONSE", response.status_code)
+#	except Exception as e:
+#		print(str(e))
 
-	#try:
-	#	sg = SendGridAPIClient(os.environ.get('SENDGRID_API_KEY'))
-	#	response = sg.send(msg)
-	#	print("EMAIL RESPONSE", respone.status_code)
-	#except Exception as e:
-	#	print(str(e))
-
-	#send_email(msg)
 	email_json = {
 		"key": CONFIG['email_key'],
 		"from": sender_email,
@@ -283,6 +269,7 @@ def add_user():
 
 	r = requests.post("http://" + CONFIG["email_ip"] + "/send_email", json=email_json )
 
+	# Send email. If error, delete database entry and return
 	app.logger.info("Send email status code: {}".format(r.status_code))
 	app.logger.debug(r.content)
 	if r.status_code != 200:
@@ -305,10 +292,12 @@ def add_user():
 			return { "status": "error", "error": "Problems sending email. Contact a developer." }, 500
 
 	# Create user profile in profiles service
-	requests.post("http://" + CONFIG["profiles_ip"] + "/user", json= { "username" : data['username'],
+	r = requests.post("http://" + CONFIG["profiles_ip"] + "/user", json= { "username" : data['username'],
 		"email" : data['email'] } )
+	app.logger.info("Create profile status code: {}".format(r.status_code))
+	app.logger.debug(r.content)
 
-	app.logger.info("/adduser user {} email sent".format(data['username']))
+	app.logger.info("/adduser user {} OK".format(data['username']))
 
 	return { "status" : "OK" }, 200
 
@@ -318,6 +307,7 @@ def verify_user():
 	#print(80*'=')
 	#print("/VERIFY() CALLED")
 	data = request.json
+	#print("DATA", data)
 	app.logger.debug("/verify data: " + json.dumps(data))
 
 	if "email" not in data or "key" not in data:
@@ -328,10 +318,10 @@ def verify_user():
 
 	cursor = db.cursor()
 	try:
-		# Check email is in database
+		#Check email is in database
 		if check_email(email, cursor) == False:
 			#print("error: DATABASE CHECK EMAIL FAILED")
-			app.logger.debug("/verify email not found in database <{}>".format(data['email']))
+			app.logger.info("/verify email not found in database <{}>".format(data['email']))
 			return { "status" : "error", "error": "Email not found" }, 400
 
 		app.logger.debug("/verify email check passed <{}>".format(data['email']))
@@ -343,11 +333,11 @@ def verify_user():
 				#print("CONF_TOKEN:", ret)
 				if email != ret:
 					#print("WEE WOO WEE WOO BAD EMAIL")
-					app.logger.debug("/verify email {} key failed".format(data['email']))
+					app.logger.info("/verify email {} key failed".format(data['email']))
 					return { "status" : "error", "error" : "Bad email or key" }, 400
 			except Exception as e:
 				#print(e)
-				app.logger.debug("/verify email unknown error <{}>".format(data['email']))
+				app.logger.info("/verify email unknown error <{}>".format(data['email']))
 				app.logger.debug(e)
 				return { "status" : "error", "error": "Contact a developer" }, 400
 
@@ -360,7 +350,7 @@ def verify_user():
 	finally:
 		cursor.close()
 
-	app.logger.debug("/verify email now verified <{}>".format(data['email']))
+	app.logger.info("/verify email OK <{}>".format(data['email']))
 
 	return { "status" : "OK"}, 200
 
@@ -382,7 +372,7 @@ def login():
 		# User does not exist
 		if not db_user:
 			#print("NO USER")
-			app.logger.debug("/login user {} not found".format(creds['username']))
+			app.logger.info("/login user {} not found".format(creds['username']))
 			return { "status" : "error", "error" : "Username not found" }, 400
 
 		# #print("USER VALID", str(user['validated']))
@@ -390,7 +380,7 @@ def login():
 
 		if not db_user['validated']: 
 			#print("NOT VALIDATED")
-			app.logger.debug("/login user {} not validated".format(creds['username']))
+			app.logger.info("/login user {} not validated".format(creds['username']))
 			return { "status" : "error", "error" : "User has not been validated" }, 400
 	finally:
 		cursor.close()
@@ -401,10 +391,11 @@ def login():
 		#print("LOGIN GOOD")
 		app.logger.debug("/login user {} good password".format(creds['username']))
 	else:
-		app.logger.debug("/login user {} bad password".format(creds['username']))
+		#print("INCORRECT PASSWORD")
+		app.logger.info("/login user {} bad password".format(creds['username']))
 		return { "status" : "error", "error" : "Incorrect password" }, 400
 
-	app.logger.debug("/login user {} login good".format(creds['username']))
+	app.logger.info("/login user {} OK".format(creds['username']))
 
 	return { "status" : "OK", "username": creds['username'] }, 200
 
